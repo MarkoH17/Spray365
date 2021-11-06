@@ -1,5 +1,3 @@
-from msal import PublicClientApplication
-from colorama import Fore
 import os
 import sys
 import argparse
@@ -8,8 +6,10 @@ import random
 import itertools
 import json
 from json import JSONEncoder
+from msal import PublicClientApplication
+from colorama import Fore
 
-version = "0.0.1-alpha"
+version = "0.1.0-beta"
 
 
 class Credential:
