@@ -10,7 +10,7 @@ from json import JSONEncoder
 from msal import PublicClientApplication
 from colorama import Fore
 
-version = "0.1.0-beta"
+version = "0.1.1-beta"
 
 
 class Credential:
