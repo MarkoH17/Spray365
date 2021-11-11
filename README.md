@@ -50,13 +50,13 @@ $ python3 spray365.py -s ex-plan.s365
 
 `-eID / --aad_endpoint <string>`: Endpoint ID to use during authentication workflow (None for random selection, specify multiple in a comma-separated string) (default: None)
 
-`-S / --shuffle_auth_order`: Shuffle order of authentication attempts so that each iteration (User1:Pass1, User2:Pass1, User3:Pass1) will be sprayed in a random order, and with a random arrangement of passwords, e.g. (User4:Pass16, User13:Pass25, User19:Pass40). Be aware this option introduces the possibility that the time between consecutive authentication attempts for a given user may occur as quickly as `DELAY` seconds apart. Consider using the -mD/--min_cred_loop_delay option to enforce a minimum delay between authentication attempts for any given user. (default: False)
+`-S / --shuffle_auth_order`: Shuffle order of authentication attempts so that each iteration (User1:Pass1, User2:Pass1, User3:Pass1) will be sprayed in a random order, and with a random arrangement of passwords, e.g. (User4:Pass16, User13:Pass25, User19:Pass40). Be aware this option introduces the possibility that the time between consecutive authentication attempts for a given user may occur as quickly as `DELAY` seconds apart. Consider using the `-mD / --min_cred_loop_delay` option to enforce a minimum delay between authentication attempts for any given user. (default: False)
 
 `-SO / --shuffle_optimization_attempts <int>`: Number of random execution plans to generate for identifying the fastest execution plan (default: 10)
 
 `-mD / --min_cred_loop_delay <int>`: Minimum time to wait between authentication attempts for a given user. This option takes into account the time one spray iteration will take, so a pre-authentication delay may not occur every time (disable with 0) (default: 0)
 
-`-cUA / --custom_user_agent <int>`: Set custom user agent for authentication requests (default: None)
+`-cUA / --custom_user_agent <string>`: Set custom user agent for authentication requests (default: None)
 
 `-rUA, --random_user_agent <int>`: Randomize user agent for authentication requests (default: False)
   
@@ -66,7 +66,7 @@ $ python3 spray365.py -s ex-plan.s365
 
 `--proxy <string>`: HTTP Proxy URL (format: http[s]://proxy.address:port) (default: None)
 
-`-R / --resume_index <int>`: Resume spraying passwords from this position in the execution plan (default: 0)
+`-R / --resume_index`: Resume spraying passwords from this position in the execution plan (default: 0)
 
 
 ## Acknowledgements
