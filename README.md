@@ -58,7 +58,7 @@ $ python3 spray365.py -s ex-plan.s365
 
 `-cUA / --custom_user_agent <string>`: Set custom user agent for authentication requests (default: None)
 
-`-rUA, --random_user_agent <int>`: Randomize user agent for authentication requests (default: False)
+`-rUA, --random_user_agent`: Randomize user agent for authentication requests (default: False)
   
 #### Spray Mode Options
   
@@ -66,7 +66,7 @@ $ python3 spray365.py -s ex-plan.s365
 
 `--proxy <string>`: HTTP Proxy URL (format: http[s]://proxy.address:port) (default: None)
 
-`-R / --resume_index`: Resume spraying passwords from this position in the execution plan (default: 0)
+`-R / --resume_index <int>`: Resume spraying passwords from this position in the execution plan (default: 0)
 
 
 ## Acknowledgements
