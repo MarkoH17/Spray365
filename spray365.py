@@ -362,6 +362,7 @@ def get_credential_combinations(domain, usernames, passwords, client_ids, endpoi
 
     for password in passwords:
         for username in usernames:
+            username = username.strip()
             combinations.append(
                 Credential(domain, username, password, random.choice(
                     client_id_values), random.choice(endpoint_id_values), random.choice(user_agent_values), delay)
@@ -715,12 +716,14 @@ def spray_execution_plan(args):
     global global_lockouts_observed
 
     global_spray_size = len(auth_creds)
-    global_spray_idx = 1
     global_lockouts_observed = 0
+    start_index = resume_index if resume_index else 0
+    global_spray_idx = start_index + 1
 
     auth_results = []
-    for cred in auth_creds:
 
+    for spray_idx in range(len(auth_creds[resume_index:])):
+        cred = auth_creds[spray_idx + resume_index]
         time.sleep(cred.initial_delay)
 
         result = cred.authenticate(proxy_url)
@@ -734,7 +737,7 @@ def spray_execution_plan(args):
 
         global_spray_idx += 1
 
-        if global_spray_idx < global_spray_size:
+        if spray_idx < global_spray_size:
             time.sleep(cred.delay)
 
     export_auth_results(auth_results)
