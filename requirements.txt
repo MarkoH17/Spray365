@@ -1,3 +1,3 @@
-colorama==0.4.4
-urllib3==1.26.2
-msal==1.16.0
+colorama==0.4.*
+urllib3>=1.26.5
+msal>=1.16.*

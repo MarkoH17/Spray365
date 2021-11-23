@@ -350,6 +350,8 @@ def validate_args(args):
                 "Spray argument is invalid (does this file exist?)")
         if not lockout_arg_valid:
             print_warning("Lockout argument is invalid")
+        if not resume_index_arg_valid:
+            print_warning("Resume argument is invalid")
 
         if not (
             spray_arg_valid and
@@ -641,15 +643,6 @@ def generate_execution_plan(args):
     print_info("Execution plan with %d credentials saved to file '%s'" %
                (len(cred_execution_plan), args.generate))
 
-    '''
-    
-    for auth_cred_group in auth_creds.keys():
-        for cred in auth_creds[auth_cred_group]:
-            print("%s:%s (total delay: %d) (before delay: %d) (after delay: %d) " % (
-                cred.username, cred.password, (cred.initial_delay + cred.delay), cred.initial_delay, cred.delay))
-        print()
-    '''
-
 
 def decode_execution_plan_item(credential_dict):
     return Credential(**credential_dict)
@@ -724,13 +717,13 @@ def spray_execution_plan(args):
 
     global_spray_size = len(auth_creds)
     global_lockouts_observed = 0
-    start_index = resume_index if resume_index else 0
-    global_spray_idx = start_index + 1
+    start_offset = resume_index - 1 if resume_index else 0
+    global_spray_idx = resume_index if resume_index else 1
 
     auth_results = []
 
-    for spray_idx in range(len(auth_creds[resume_index:])):
-        cred = auth_creds[spray_idx + resume_index]
+    for spray_idx in range(start_offset, len(auth_creds)):
+        cred = auth_creds[spray_idx]
         time.sleep(cred.initial_delay)
 
         result = cred.authenticate(proxy_url, args.insecure)
@@ -744,7 +737,7 @@ def spray_execution_plan(args):
 
         global_spray_idx += 1
 
-        if spray_idx < global_spray_size:
+        if spray_idx < global_spray_size - 1:
             time.sleep(cred.delay)
 
     export_auth_results(auth_results)
