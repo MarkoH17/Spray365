@@ -9,6 +9,8 @@ import time
 from json import JSONEncoder
 from msal import PublicClientApplication
 from colorama import Fore
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 version = "0.1.1-beta"
 
@@ -33,7 +35,7 @@ class Credential:
     def email_address(self):
         return "%s@%s" % (self.username, self.domain)
 
-    def authenticate(self, proxy):
+    def authenticate(self, proxy, insecure=False):
 
         print_spray_cred_output(self)
 
@@ -43,10 +45,12 @@ class Credential:
                 "http": proxy,
                 "https": proxy,
             }
-
-        auth_app = PublicClientApplication(
-            self.client_id[1], authority="https://login.microsoftonline.com/organizations", proxies=proxies)
-
+        if insecure:
+            auth_app = PublicClientApplication(
+                self.client_id[1], authority="https://login.microsoftonline.com/organizations", proxies=proxies, verify=False)
+        else:
+            auth_app = PublicClientApplication(
+                self.client_id[1], authority="https://login.microsoftonline.com/organizations", proxies=proxies)
         scopes = ["%s/.default" %
                   self.endpoint[1]]
 
@@ -258,6 +262,9 @@ def initialize():
 
     parser.add_argument(
         "--proxy", type=str, help="HTTP Proxy URL (format: http[s]://proxy.address:port)")
+
+    parser.add_argument(
+        "-k", "--insecure", action="store_true", help="Disable HTTPS certificate verification")
 
     parser.add_argument("-cID", "--aad_client", type=str,
                         help="Client ID used during authentication workflow (None for random selection, specify multiple in a comma-separated string)", default=None, required=False)
@@ -726,7 +733,7 @@ def spray_execution_plan(args):
         cred = auth_creds[spray_idx + resume_index]
         time.sleep(cred.initial_delay)
 
-        result = cred.authenticate(proxy_url)
+        result = cred.authenticate(proxy_url, args.insecure)
         auth_results.append(result)
 
         if result.auth_error.error_code == 50053:
