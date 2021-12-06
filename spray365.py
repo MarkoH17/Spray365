@@ -370,7 +370,7 @@ def get_credential_combinations(domain, usernames, passwords, client_ids, endpoi
     user_agent_values = list(user_agents.items())
 
     for password in passwords:
-        for username in usernames:
+        for username in list(dict.fromkeys(usernames)):
             username = username.strip()
             combinations.append(
                 Credential(domain, username, password, random.choice(
@@ -581,9 +581,10 @@ def generate_execution_plan(args):
                 random.shuffle(auth_combinations_by_user[user])
 
             group_index = 0
-            while sum([len(auth_combinations_by_user[u]) for u in auth_combinations_by_user.keys()]) > 0:
+            while sum([len(u) for u in auth_combinations_by_user.values()]) > 0:
                 cred_grouping = []
-                users = list(auth_combinations_by_user.keys())
+                users = [user for user, creds in auth_combinations_by_user.items()
+                         if len(creds)]
                 random.shuffle(users)
 
                 while users:
