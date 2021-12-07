@@ -6,6 +6,7 @@ import os
 import random
 import sys
 import time
+import signal
 from json import JSONEncoder
 from msal import PublicClientApplication
 from colorama import Fore
@@ -649,7 +650,7 @@ def decode_execution_plan_item(credential_dict):
     return Credential(**credential_dict)
 
 
-def export_auth_results(auth_results):
+def export_auth_results():
     export_file = "spray365_results_%s.json" % datetime.datetime.now().strftime(
         "%Y-%m-%d_%H-%M-%S")
 
@@ -658,7 +659,7 @@ def export_auth_results(auth_results):
     with open(export_file, "w") as execution_plan_file:
         execution_plan_file.write(json_execution_plan)
 
-    print_info("Authentication results file '%s'" %
+    print_info("Authentication results saved to file '%s'" %
                export_file)
 
 
@@ -674,8 +675,12 @@ def spray_execution_plan(args):
     for line in execution_plan_lines:
         execution_plan_str += line.strip("\r").strip("\n")
 
-    auth_creds = json.loads(
-        execution_plan_str, object_hook=decode_execution_plan_item)
+    try:
+        auth_creds = json.loads(
+            execution_plan_str, object_hook=decode_execution_plan_item)
+    except:
+        print_error(
+            "Unable to process execution plan '%s'. Perhaps it is formatted incorrectly?" % args.spray)
 
     resume_index = args.resume_index
 
@@ -715,6 +720,7 @@ def spray_execution_plan(args):
     global global_spray_size
     global global_spray_idx
     global global_lockouts_observed
+    global auth_results
 
     global_spray_size = len(auth_creds)
     global_lockouts_observed = 0
@@ -741,16 +747,30 @@ def spray_execution_plan(args):
         if spray_idx < global_spray_size - 1:
             time.sleep(cred.delay)
 
-    export_auth_results(auth_results)
+    export_auth_results()
+
+
+def handle_interrupt(signum, frame):
+    # Remove ^C output from console (caused by sigint)
+    sys.stdout.write('\b\b\r')
+    sys.stdout.flush()
+    print_info("Received keyboard interrupt")
+    export_auth_results()
+    sys.exit(1)
 
 
 def main(args):
     generate_mode = args.generate is not None
-
+    signal.signal(signal.SIGINT, handle_interrupt)
     if(generate_mode):
         generate_execution_plan(args)
     else:
-        spray_execution_plan(args)
+        try:
+            spray_execution_plan(args)
+        except Exception as e:
+            print_error(
+                "An error occured while spraying credentials: '%s'" % str(e), False)
+            export_auth_results()
 
 
 def print_error(message, fatal=True):
