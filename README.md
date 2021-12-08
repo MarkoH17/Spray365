@@ -1,3 +1,24 @@
+![Spray 365 Logo](screenshots/spray365_logo.png)
+
+<p align="center">
+  <a href="https://github.com/MarkoH17/Spray365/releases/latest">
+    <img src="https://img.shields.io/github/v/tag/markoh17/spray365?label=latest&style=flat-square">
+  </a>
+  <a href="https://github.com/MarkoH17/Spray365/stargazers">
+    <img src="https://img.shields.io/github/stars/MarkoH17/Spray365?&style=flat-square">
+  </a>
+  <a href="https://github.com/MarkoH17/Spray365/network/members">
+    <img src="https://img.shields.io/github/forks/MarkoH17/Spray365?&style=flat-square">
+  </a>
+  <a href="https://github.com/MarkoH17/Spray365/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/MarkoH17/Spray365?&style=flat-square">
+  </a>
+  <a href="https://github.com/MarkoH17/Spray365/blob/main/spray365.py">
+    <img src="https://img.shields.io/github/languages/top/markoh17/spray365?style=flat-square">
+  </a>
+  <br>
+</p>
+
 # What is Spray365?
 Spray365 is a password spraying tool that identifies valid credentials for Microsoft accounts (Office 365 / Azure AD). How is Spray365 different from the many other password spraying tools that are already available? Spray365 enables passwords to be sprayed from an "execution plan". While having a pre-generated execution plan that describe the spraying operation well before it occurs has many other benefits that Spray365 leverages, this also allows password sprays to be resumed (`-R` option) after a network error or other interruption. While it is easiest to generate a Spray365 execution plan using Spray365 directly, other tools that produce a compatible JSON structure make it easy to build unique password spraying workflows. 
 
