@@ -13,7 +13,7 @@ from colorama import Fore
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 
 
 class Credential:
