@@ -736,8 +736,12 @@ def spray_execution_plan(args):
         result = cred.authenticate(proxy_url, args.insecure)
         auth_results.append(result)
 
-        if result.auth_error and result.auth_error.error_code == 50053:
-            global_lockouts_observed += 1
+        # When auth is successful under certain conditions, auth_error is none
+        if result.auth_error is None:
+            pass
+        else:
+            if result.auth_error and result.auth_error.error_code == 50053:
+                global_lockouts_observed += 1
 
         if lockout_threshold and global_lockouts_observed >= lockout_threshold:
             print_error("Lockout threshold reached, aborting password spray")
