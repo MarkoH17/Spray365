@@ -72,7 +72,7 @@ class Credential:
             self.auth_correlation_id = raw_result["correlation_id"]
 
         # Error codes that also indicate a successful login; see https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/wiki/Client-Applications#common-invalid-client-errors
-        auth_complete_success_error_codes = [7000218]
+        auth_complete_success_error_codes = [7000218, 700016]
         auth_partial_success_error_codes = [
             50053,
             50055,
@@ -736,7 +736,7 @@ def spray_execution_plan(args):
         result = cred.authenticate(proxy_url, args.insecure)
         auth_results.append(result)
 
-        if result.auth_error.error_code == 50053:
+        if result.auth_error and result.auth_error.error_code == 50053:
             global_lockouts_observed += 1
 
         if lockout_threshold and global_lockouts_observed >= lockout_threshold:
