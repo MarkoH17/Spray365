@@ -72,7 +72,7 @@ class Credential:
             self.auth_correlation_id = raw_result["correlation_id"]
 
         # Error codes that also indicate a successful login; see https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/wiki/Client-Applications#common-invalid-client-errors
-        auth_complete_success_error_codes = [7000218, 700016]
+        auth_complete_success_error_codes = [7000218, 700016, 65001]
         auth_partial_success_error_codes = [
             50053,
             50055,
@@ -188,8 +188,6 @@ class AuthResult:
             message = "Invalid credentials"
         elif error_code == 53003:
             message = "Conditional access policy prevented access"
-        elif error_code == 65001:
-            message = "Unapproved application requires interactive authentication"
         else:
             message = "An unknown error occurred"
 
@@ -236,72 +234,76 @@ def initialize():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    mode_argument_group = parser.add_mutually_exclusive_group(
-        required=True)
+    subparsers = parser.add_subparsers(
+        help="mode help", dest="mode")
 
-    mode_argument_group.add_argument(
-        "-g", "--generate", type=str, help="File to store the generated Spray365 execution plan")
-    mode_argument_group.add_argument(
-        "-s", "--spray", type=str, help="File containing Spray365 execution plan to use for password spraying")
+    generate_mode_parser = subparsers.add_parser(
+        "generate", help="Generate an execution plan", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    spray_mode_parser = subparsers.add_parser(
+        "spray", help="Spray an execution plan", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument("-d", "--domain", type=str,
-                        help="Office 365 domain to authenticate against")
+    generate_mode_parser.add_argument(
+        "-ep", "--execution_plan", type=str, help="File to store the generated Spray365 execution plan")
 
-    parser.add_argument("-u", "--user_file", type=str,
-                        help="File containing usernames to spray (one per line without domain)")
+    generate_mode_parser.add_argument(
+        "-d", "--domain", type=str, help="Office 365 domain to authenticate against")
+    generate_mode_parser.add_argument(
+        "-u", "--user_file", type=str, help="File containing usernames to spray (one per line without domain)")
 
-    password_argument_group = parser.add_mutually_exclusive_group()
+    password_argument_group = generate_mode_parser.add_mutually_exclusive_group()
     password_argument_group.add_argument("-p", "--password", type=str,
                                          help="Password to spray")
     password_argument_group.add_argument("-pf", "--password_file", type=str,
                                          help="File containing passwords to spray (one per line)")
 
-    parser.add_argument("--delay", type=int,
-                        help="Delay in seconds to wait between authentication attempts", default=30)
-    parser.add_argument("--lockout", type=int,
-                        help="Number of account lockouts to observe before aborting spraying session (disable with 0)", default=5)
+    generate_mode_parser.add_argument("--delay", type=int,
+                                      help="Delay in seconds to wait between authentication attempts", default=30)
+    generate_mode_parser.add_argument("-cID", "--aad_client", type=str,
+                                      help="Client ID used during authentication workflow (None for random selection, specify multiple in a comma-separated string)", default=None, required=False)
 
-    parser.add_argument(
-        "--proxy", type=str, help="HTTP Proxy URL (format: http[s]://proxy.address:port)")
+    generate_mode_parser.add_argument("-eID", "--aad_endpoint", type=str,
+                                      help="Endpoint ID to specify during authentication workflow (None for random selection, specify multiple in a comma-separated string)", default=None, required=False)
 
-    parser.add_argument(
-        "-k", "--insecure", action="store_true", help="Disable HTTPS certificate verification")
+    generate_mode_parser.add_argument("-S", "--shuffle_auth_order",
+                                      help="Shuffle order of authentication attempts so that each iteration (User1:Pass1, User2:Pass1, User3:Pass1) will be sprayed in a random order, and with a random arrangement of passwords, e.g (User4:Pass16, User13:Pass25, User19:Pass40). Be aware this option introduces the possibility that the time between consecutive authentication attempts for a given user may occur DELAY seconds apart. Consider using the -mD/--min_cred_loop_delay option to enforce a minimum delay between authentication attempts for any given user.", default=False, action='store_true')
 
-    parser.add_argument("-cID", "--aad_client", type=str,
-                        help="Client ID used during authentication workflow (None for random selection, specify multiple in a comma-separated string)", default=None, required=False)
+    generate_mode_parser.add_argument("-SO", "--shuffle_optimization_attempts", type=int,
+                                      help="Number of random execution plans to generate for identifying the fastest execution plan", default=10)
 
-    parser.add_argument("-eID", "--aad_endpoint", type=str,
-                        help="Endpoint ID to specify during authentication workflow (None for random selection, specify multiple in a comma-separated string)", default=None, required=False)
+    generate_mode_parser.add_argument("-mD", "--min_cred_loop_delay", type=int,
+                                      help="Minimum time to wait between authentication attempts for a given user. This option takes into account the time one spray iteration will take, so a pre-authentication delay may not occur every time (disable with 0)", default=0)
 
-    parser.add_argument("-S", "--shuffle_auth_order",
-                        help="Shuffle order of authentication attempts so that each iteration (User1:Pass1, User2:Pass1, User3:Pass1) will be sprayed in a random order, and with a random arrangement of passwords, e.g (User4:Pass16, User13:Pass25, User19:Pass40). Be aware this option introduces the possibility that the time between consecutive authentication attempts for a given user may occur DELAY seconds apart. Consider using the -mD/--min_cred_loop_delay option to enforce a minimum delay between authentication attempts for any given user.", default=False, action='store_true')
-
-    parser.add_argument("-SO", "--shuffle_optimization_attempts", type=int,
-                        help="Number of random execution plans to generate for identifying the fastest execution plan", default=10)
-
-    parser.add_argument("-mD", "--min_cred_loop_delay", type=int,
-                        help="Minimum time to wait between authentication attempts for a given user. This option takes into account the time one spray iteration will take, so a pre-authentication delay may not occur every time (disable with 0)", default=0)
-
-    parser.add_argument("-R", "--resume_index", type=int,
-                        help="Resume spraying passwords from this position in the execution plan", default=0)
-
-    user_agent_argument_group = parser.add_mutually_exclusive_group()
+    user_agent_argument_group = generate_mode_parser.add_mutually_exclusive_group()
     user_agent_argument_group.add_argument("-cUA", "--custom_user_agent", type=str,
                                            help="Set custom user agent for authentication requests")
     user_agent_argument_group.add_argument("-rUA", "--random_user_agent",
                                            help="Randomize user agent for authentication requests", default=False, action='store_true')
 
+    spray_mode_parser.add_argument("-ep", "--execution_plan", type=str,
+                                   help="File containing Spray365 execution plan to use for password spraying")
+    spray_mode_parser.add_argument("-l", "--lockout", type=int,
+                                   help="Number of account lockouts to observe before aborting spraying session (disable with 0)", default=5)
+    spray_mode_parser.add_argument(
+        "-x", "--proxy", type=str, help="HTTP Proxy URL (format: http[s]://proxy.address:port)")
+    spray_mode_parser.add_argument(
+        "-k", "--insecure", action="store_true", help="Disable HTTPS certificate verification")
+    spray_mode_parser.add_argument("-R", "--resume_index", type=int,
+                                   help="Resume spraying passwords from this position in the execution plan", default=0)
+    spray_mode_parser.add_argument("-i", "--ignore_success",
+                                   help="Ignore successful authentication attempts for users and continue to spray credentials. Setting this flag will enable spraying credentials for users even if Spray365 has already identified valid credentials.", default=False, action='store_true')
+
     args = parser.parse_args()
-    validate_args(args)
-    main(args)
+
+    mode = args.mode
+    validate_args(args, mode)
+    main(args, mode)
 
 
-def validate_args(args):
-    if args.generate is not None:
-        # Validate args needed for generation
-        generate_arg_valid = args.generate is not None and not os.path.isfile(
-            args.generate)
+def validate_args(args, mode):
 
+    if mode == "generate":
+        execution_plan_arg_valid = args.execution_plan is not None and not os.path.isfile(
+            args.execution_plan)
         domain_arg_valid = args.domain is not None
         user_arg_valid = args.user_file is not None and os.path.isfile(
             args.user_file)
@@ -313,54 +315,60 @@ def validate_args(args):
         delay_arg_valid = args.delay is not None and args.delay >= 0
 
         min_cred_loop_delay_arg_valid = args.min_cred_loop_delay is not None and args.min_cred_loop_delay >= 0
-        if not generate_arg_valid:
+
+        if not execution_plan_arg_valid:
             print_warning(
-                "Generate argument is invalid (does this file already exist?)")
+                "Execution plan argument (--execution_plan) is invalid (does this file already exist?)")
         if not domain_arg_valid:
-            print_warning("Domain argument is invalid")
+            print_warning("Domain argument (--domain) is invalid")
         if not user_arg_valid:
-            print_warning("User argument (--user / --user_file) is invalid")
+            print_warning("User file argument (--user_file) is invalid")
         if not password_arg_valid:
             print_warning(
-                "User argument (--password / --password_file) is invalid")
+                "Password argument (--password / --password_file) is invalid")
         if not delay_arg_valid:
-            print_warning("Delay argument is invalid")
+            print_warning("Delay argument (--delay) is invalid")
 
         if not (
-            generate_arg_valid and
+            execution_plan_arg_valid and
             domain_arg_valid and
             user_arg_valid and
             password_arg_valid and
             delay_arg_valid and
-
             min_cred_loop_delay_arg_valid
         ):
-            print_error("Arguments are invalid")
-            sys.exit(1)
-    else:
-        # Validate args needed for spraying
-        spray_arg_valid = args.spray is not None and os.path.isfile(
-            args.spray)
+            print_error("Generate mode arguments are invalid")
+
+    elif mode == "spray":
+        execution_plan_arg_valid = args.execution_plan is not None and os.path.isfile(
+            args.execution_plan)
 
         lockout_arg_valid = args.lockout is not None and args.lockout >= 0
-
+        proxy_arg_valid = args.proxy is None or (
+            args.proxy.startswith("http://") or
+            args.proxy.startswith("https://")
+        )
         resume_index_arg_valid = args.resume_index is not None and args.resume_index >= 0
 
-        if not spray_arg_valid:
+        if not execution_plan_arg_valid:
             print_warning(
-                "Spray argument is invalid (does this file exist?)")
+                "Execution plan argument (--execution_plan) is invalid (does this file exist?)")
         if not lockout_arg_valid:
-            print_warning("Lockout argument is invalid")
+            print_warning("Lockout argument (--lockout) is invalid")
+        if not proxy_arg_valid:
+            print_warning("Proxy argument (--proxy) is invalid")
         if not resume_index_arg_valid:
-            print_warning("Resume argument is invalid")
+            print_warning("Resume argument (--resume_index) is invalid")
 
         if not (
-            spray_arg_valid and
+            execution_plan_arg_valid and
             lockout_arg_valid and
+            proxy_arg_valid and
             resume_index_arg_valid
         ):
-            print_error("Arguments are invalid")
-            sys.exit(1)
+            print_error("Spray mode arguments are invalid")
+    else:
+        print_error("Unable to validate arguments for an unknown mode")
 
 
 def get_credential_combinations(domain, usernames, passwords, client_ids, endpoint_ids, user_agents, delay):
@@ -373,6 +381,12 @@ def get_credential_combinations(domain, usernames, passwords, client_ids, endpoi
     for password in passwords:
         for username in list(dict.fromkeys(usernames)):
             username = username.strip()
+
+            bad_username_format = "@" in username or "\\" in username
+            if bad_username_format:
+                print_error(
+                    "Username '%s' is formatted like a UPN (user@domain.com) or samAccountName (domain.com\\user). Expected just username." % username)
+
             combinations.append(
                 Credential(domain, username, password, random.choice(
                     client_id_values), random.choice(endpoint_id_values), random.choice(user_agent_values), delay)
@@ -560,7 +574,7 @@ def generate_execution_plan(args):
 
     if args.shuffle_auth_order and not args.min_cred_loop_delay:
         print_warning(
-            "This random execution plan does not enforce a minimum cred loop delay (-mD / --min_cred_loop_delay). This may cause account lockouts!!!")
+            "This random execution plan does not enforce a minimum cred loop delay (-mD / --min_cred_loop_delay). This may cause account lockouts!")
 
     if args.shuffle_auth_order:
         optimization_tries = args.shuffle_optimization_attempts if args.min_cred_loop_delay else 1
@@ -640,10 +654,10 @@ def generate_execution_plan(args):
 
     json_execution_plan = json.dumps(
         cred_execution_plan, default=lambda o: o.__dict__)
-    with open(args.generate, "w") as execution_plan_file:
+    with open(args.execution_plan, "w") as execution_plan_file:
         execution_plan_file.write(json_execution_plan)
     print_info("Execution plan with %d credentials saved to file '%s'" %
-               (len(cred_execution_plan), args.generate))
+               (len(cred_execution_plan), args.execution_plan))
 
 
 def decode_execution_plan_item(credential_dict):
@@ -664,8 +678,8 @@ def export_auth_results():
 
 
 def spray_execution_plan(args):
-    print_info("Processing execution plan '%s'" % args.spray)
-    execution_plan_file_path = args.spray
+    print_info("Processing execution plan '%s'" % args.execution_plan)
+    execution_plan_file_path = args.execution_plan
 
     with open(execution_plan_file_path, "r") as execution_plan_file:
         execution_plan_lines = execution_plan_file.readlines()
@@ -680,7 +694,7 @@ def spray_execution_plan(args):
             execution_plan_str, object_hook=decode_execution_plan_item)
     except:
         print_error(
-            "Unable to process execution plan '%s'. Perhaps it is formatted incorrectly?" % args.spray)
+            "Unable to process execution plan '%s'. Perhaps it is formatted incorrectly?" % args.execution_plan)
 
     resume_index = args.resume_index
 
@@ -711,6 +725,11 @@ def spray_execution_plan(args):
     else:
         print_warning("Lockout threshold is disabled")
 
+    ignore_success = args.ignore_success
+    if ignore_success:
+        print_warning(
+            "Ignore Success flag is enabled")
+
     proxy_url = args.proxy
     if proxy_url:
         print_info("Proxy (HTTP/HTTPS) set to '%s'" % proxy_url)
@@ -721,6 +740,7 @@ def spray_execution_plan(args):
     global global_spray_idx
     global global_lockouts_observed
     global auth_results
+    global credentialed_users
 
     global_spray_size = len(auth_creds)
     global_lockouts_observed = 0
@@ -728,19 +748,29 @@ def spray_execution_plan(args):
     global_spray_idx = resume_index if resume_index else 1
 
     auth_results = []
+    credentialed_users = []
 
     for spray_idx in range(start_offset, len(auth_creds)):
         cred = auth_creds[spray_idx]
         time.sleep(cred.initial_delay)
 
-        result = cred.authenticate(proxy_url, args.insecure)
-        auth_results.append(result)
+        # Only attempt authentication if we haven't observed valid credentials for the user
+        if ignore_success or cred.username not in credentialed_users:
+            result = cred.authenticate(proxy_url, args.insecure)
+            auth_results.append(result)
 
-        if result.auth_error and result.auth_error.error_code == 50053:
-            global_lockouts_observed += 1
+            if result.auth_error and result.auth_error.error_code == 50053:
+                global_lockouts_observed += 1
 
-        if lockout_threshold and global_lockouts_observed >= lockout_threshold:
-            print_error("Lockout threshold reached, aborting password spray")
+            if lockout_threshold and global_lockouts_observed >= lockout_threshold:
+                print_error(
+                    "Lockout threshold reached, aborting password spray")
+
+            if result.auth_complete_success:
+                credentialed_users.append(cred.username)
+        else:
+            print_spray_output(cred.client_id[0], cred.endpoint[0], cred.user_agent[0],
+                               cred.username, cred.password, "%s (Skipped)" % Fore.BLUE, None, False)
 
         global_spray_idx += 1
 
@@ -759,18 +789,20 @@ def handle_interrupt(signum, frame):
     sys.exit(1)
 
 
-def main(args):
-    generate_mode = args.generate is not None
+def main(args, mode):
     signal.signal(signal.SIGINT, handle_interrupt)
-    if(generate_mode):
+
+    if mode == "generate":
         generate_execution_plan(args)
-    else:
+    elif mode == "spray":
         try:
             spray_execution_plan(args)
         except Exception as e:
             print_error(
                 "An error occured while spraying credentials: '%s'" % str(e), False)
             export_auth_results()
+    else:
+        print_error("Unable to handle an unknown mode")
 
 
 def print_error(message, fatal=True):
@@ -803,14 +835,10 @@ def print_spray_cred_output(credential, auth_result=None):
         status = "%s(Failed: %s)" % (
             Fore.RED, auth_result.auth_error.error_message)
 
-    spray_index = str(global_spray_idx).zfill(len(str(global_spray_size)))
-
     line_terminator = "\r" if not auth_result else None
     flush_line = True if auth_result else False
 
     print_spray_output(
-        spray_index,
-        global_spray_size,
         credential.client_id[0],
         credential.endpoint[0],
         credential.user_agent[0],
@@ -822,13 +850,13 @@ def print_spray_cred_output(credential, auth_result=None):
     )
 
 
-def print_spray_output(spray_idx, spray_cnt, client_id, endpoint_id, user_agent, username, password, status_message, line_terminator, flush):
+def print_spray_output(client_id, endpoint_id, user_agent, username, password, status_message, line_terminator, flush):
     print("%s[%s - SPRAY %s/%d] (%s%s%s->%s%s%s->%s%s%s): %s%s / %s%s %s%s" %
           (
               Fore.LIGHTBLUE_EX,
               get_time_str(),
-              spray_idx,
-              spray_cnt,
+              str(global_spray_idx).zfill(len(str(global_spray_size))),
+              global_spray_size,
               Fore.LIGHTRED_EX,
               user_agent,
               Fore.LIGHTBLUE_EX,
