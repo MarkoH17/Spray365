@@ -43,7 +43,7 @@ $ cd Spray365
 
 ### Usage
 #### Generate an Execution Plan
-An execution plan is needed to spray credentials, so we need to create one! Spray365 can generate its own execution plan by running it in "generate" (`-g`) mode.
+An execution plan is needed to spray credentials, so we need to create one! Spray365 can generate its own execution plan by running it in "generate" (`spray365.py generate`) mode. See the generate mode help (`spray365.py generate -h`) for more detail.
 ```bash
 $ python3 spray365.py generate --execution_plan <execution_plan_filename> -d <domain_name> -u <file_containing_usernames> -pf <file_containing_passwords>
 ```
@@ -53,7 +53,7 @@ $ python3 spray365.py generate --execution_plan ex-plan.s365 -d example.com -u u
 ```
 
 #### Spraying an Execution Plan
-Once an execution plan is available, Spray365 can be used to process it. Running Spray365 in "spray" (`-s`) mode will process the specified execution plan and spray the appropriate credentials.
+Once an execution plan is available, Spray365 can be used to process it. Running Spray365 in "spray" (`spray365.py spray`) mode will process the specified execution plan and spray the appropriate credentials. See the spray mode help (`spray365.py spray -h`) for more detail.
 ```bash
 $ python3 spray365.py spray --execution_plan <execution_plan_filename>
 ```
