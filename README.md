@@ -45,33 +45,43 @@ $ cd Spray365
 #### Generate an Execution Plan
 An execution plan is needed to spray credentials, so we need to create one! Spray365 can generate its own execution plan by running it in "generate" (`-g`) mode.
 ```bash
-$ python3 spray365.py -g <path_for_saved_execution_plan> -d <domain_name> -u <file_containing_usernames> -pf <file_containing_passwords>
+$ python3 spray365.py generate --execution_plan <execution_plan_filename> -d <domain_name> -u <file_containing_usernames> -pf <file_containing_passwords>
 ```
 e.g.
 ```bash
-$ python3 spray365.py -g ex-plan.s365 -d example.com -u usernames -pf passwords
+$ python3 spray365.py generate --execution_plan ex-plan.s365 -d example.com -u usernames -pf passwords
 ```
 
 #### Spraying an Execution Plan
 Once an execution plan is available, Spray365 can be used to process it. Running Spray365 in "spray" (`-s`) mode will process the specified execution plan and spray the appropriate credentials.
 ```bash
-$ python3 spray365.py -s <path_to_execution_plan>
+$ python3 spray365.py spray --execution_plan <execution_plan_filename>
 ```
 e.g.
 ```bash
-$ python3 spray365.py -s ex-plan.s365
+$ python3 spray365.py spray --execution_plan ex-plan.s365
 ```
 
 ### Other Options for Advanced Usage
 #### Generate Mode Options
 
+`-ep / --execution_plan <string>`: File to store the generated Spray365 execution plan (default: None)
+
+`-d / --domain <string>`: Office 365 domain to authenticate against (default: None)
+
+`-u / --user_file <string>`: File containing usernames to spray (one per line without domain) (default: None)
+
+`-p / --password <string>`: Password to spray (default: None)
+
+`-pf / --password_file <string>`: File containing passwords to spray (one per line) (default: None)
+
 `--delay <int>`: Delay in seconds to wait between authentication attempts (default: 30)
 
-`-cID / --aad_client <string>`: Client ID to use during authentication workflow (None for random selection, specify multiple in a comma-separated string) (default: None)
+`-cID / --aad_client <string>`: Client ID used during authentication workflow (None for random selection, specify multiple in a comma-separated string) (default: None)
 
-`-eID / --aad_endpoint <string>`: Endpoint ID to use during authentication workflow (None for random selection, specify multiple in a comma-separated string) (default: None)
+`-eID / --aad_endpoint <string>`: Endpoint ID to specify during authentication workflow (None for random selection, specify multiple in a comma-separated string) (default: None)
 
-`-S / --shuffle_auth_order`: Shuffle order of authentication attempts so that each iteration (User1:Pass1, User2:Pass1, User3:Pass1) will be sprayed in a random order, and with a random arrangement of passwords, e.g. (User4:Pass16, User13:Pass25, User19:Pass40). Be aware this option introduces the possibility that the time between consecutive authentication attempts for a given user may occur as quickly as `DELAY` seconds apart. Consider using the `-mD / --min_cred_loop_delay` option to enforce a minimum delay between authentication attempts for any given user. (default: False)
+`-S / --shuffle_auth_order`: Shuffle order of authentication attempts so that each iteration (User1:Pass1, User2:Pass1, User3:Pass1) will be sprayed in a random order, and with a random arrangement of passwords, e.g (User4:Pass16, User13:Pass25, User19:Pass40). Be aware this option introduces the possibility that the time between consecutive authentication attempts for a given user may occur DELAY seconds apart. Consider using the -mD/--min_cred_loop_delay option to enforce a minimum delay between authentication attempts for any given user. (default: False)
 
 `-SO / --shuffle_optimization_attempts <int>`: Number of random execution plans to generate for identifying the fastest execution plan (default: 10)
 
@@ -79,15 +89,21 @@ $ python3 spray365.py -s ex-plan.s365
 
 `-cUA / --custom_user_agent <string>`: Set custom user agent for authentication requests (default: None)
 
-`-rUA, --random_user_agent`: Randomize user agent for authentication requests (default: False)
+`-rUA / --random_user_agent`: Randomize user agent for authentication requests (default: False)
   
 #### Spray Mode Options
   
-`--lockout <int>`: Number of account lockouts to observe before aborting spraying session (disable with 0) (default: 5)
+`-ep, --execution_plan <string>`: File containing Spray365 execution plan to use for password spraying (default: None)
 
-`--proxy <string>`: HTTP Proxy URL (format: http[s]://proxy.address:port) (default: None)
+`-l, --lockout <int>`: Number of account lockouts to observe before aborting spraying session (disable with 0) (default: 5)
 
-`-R / --resume_index <int>`: Resume spraying passwords from this position in the execution plan (default: 0)
+`-x, --proxy <string>`: HTTP Proxy URL (format: http[s]://proxy.address:port) (default: None)
+
+`-k, --insecure`: Disable HTTPS certificate verification (default: False)
+
+`-R, --resume_index <int>`: Resume spraying passwords from this position in the execution plan (default: 0)
+
+`-i, --ignore_success`: Ignore successful authentication attempts for users and continue to spray credentials. Setting this flag will enable spraying credentials for users even if Spray365 has already identified valid credentials. (default: False)
 
 
 ## Acknowledgements

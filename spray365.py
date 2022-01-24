@@ -235,7 +235,7 @@ def initialize():
     )
 
     subparsers = parser.add_subparsers(
-        help="mode help", dest="mode")
+        help="mode help", dest="mode", required=True)
 
     generate_mode_parser = subparsers.add_parser(
         "generate", help="Generate an execution plan", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
