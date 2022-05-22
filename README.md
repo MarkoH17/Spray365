@@ -108,6 +108,7 @@ Options:
   -d, --domain                    Office 365 domain to authenticate against  [required]
   --delay                         Delay in seconds to wait between authentication attempts  [default: 30]
   -mD, --min_loop_delay           Minimum time to wait between authentication attempts for a given user. This option takes into account the time one spray iteration will take, so a pre-authentication delay may not occur every time  [default: 0]
+  
   User options:
     -u, --user_file               File containing usernames to spray (one per line without domain)  [required]
 
