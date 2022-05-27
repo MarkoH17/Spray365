@@ -2,6 +2,7 @@ import itertools
 from pathlib import Path
 import random
 from typing import Callable
+import typing
 import click
 from modules.core.credential import Credential
 from modules.generate.configuration import Configuration
@@ -102,9 +103,9 @@ def _insert_random_initial_delays(
                 additional_needed_delay = min_delay - prior_delays
                 cred.initial_delay = additional_needed_delay
 
-
+# TODO: Replace typing.Union below with modern Union added in PEP 604 (Python 3.10+)
 def get_spray_runtime(
-    credentials: list[Credential] | dict[int, list[Credential]]
+    credentials: typing.Union[typing.List[Credential], typing.Dict[int, list[Credential]]]
 ) -> int:
     runtime = 0
     if type(credentials) is dict:

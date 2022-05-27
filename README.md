@@ -35,6 +35,9 @@ Spray365 exposes a few options that are useful when spraying credentials. Random
 
 ## Getting Started
 
+### ❗Python Versions
+Spray365 works best on Python 3.10, but has been tested on Python 3.9.13.
+
 ### Installation
 Clone the repository, install the required Python packages, and run Spray365!
 ```bash

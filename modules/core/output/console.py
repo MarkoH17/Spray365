@@ -1,6 +1,7 @@
 import datetime
 import random
 import sys
+import typing
 import click
 from colorama import Fore
 
@@ -61,7 +62,7 @@ def _print_log(level: str, message: str, color: str):
 
     click.echo(click.style(output, fg=color))
 
-
+# TODO: Replace typing.Union below with modern Union added in PEP 604 (Python 3.10+)
 def print_spray_output(
     spray_idx: int,
     spray_size: int,
@@ -71,7 +72,7 @@ def print_spray_output(
     username: str,
     password: str,
     status_message: str,
-    line_terminator: str | None,
+    line_terminator: typing.Union[str, None],
     flush: bool,
 ):
     print(
