@@ -22,7 +22,7 @@ def get_users_and_passwords(conf: Configuration) -> tuple[list[str], list[str]]:
     password_list: list[str] = []
     for line_idx, line in enumerate(conf.user_file):
         line = line.rstrip()
-        line_data = line.split(":", maxsplit=2)
+        line_data = line.split(":", maxsplit=1)
 
         if len(line_data) != 2:
             raise click.BadParameter(
