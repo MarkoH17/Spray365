@@ -5,7 +5,7 @@ from modules.generate import generate
 from modules.spray import spray
 from modules.review import review
 
-version = "0.2.0-beta"
+version = "0.2.1-beta"
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
