@@ -1,3 +1,4 @@
+from __future__ import annotations
 import json
 import click
 from modules.core.auth_result import AuthResult
