@@ -99,6 +99,4 @@ def command(
 
     json_execution_plan = json.dumps(cred_execution_plan, default=lambda o: o.__dict__)
 
-    execution_plan_file: click.utils.LazyFile = ctx.parent.params["execution_plan"]
-    with execution_plan_file.open() as ep_file:
-        ep_file.write(json_execution_plan)
+    execution_plan.write(json_execution_plan)

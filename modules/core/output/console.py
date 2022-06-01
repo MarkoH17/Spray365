@@ -62,6 +62,7 @@ def _print_log(level: str, message: str, color: str):
 
     click.echo(click.style(output, fg=color))
 
+
 # TODO: Replace typing.Union below with modern Union added in PEP 604 (Python 3.10+)
 def print_spray_output(
     spray_idx: int,
