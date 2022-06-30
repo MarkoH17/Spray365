@@ -1,5 +1,5 @@
-from modules.core.auth_result import AuthResult
 from modules.core.auth_error import AuthError
+from modules.core.auth_result import AuthResult
 from modules.core.credential import Credential
 
 

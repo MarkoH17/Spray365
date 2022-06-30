@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import json
+
 import click
+
 from modules.core.auth_result import AuthResult
-from modules.review.helpers import decode_auth_result_item
 from modules.core.output import console
+from modules.review.helpers import decode_auth_result_item
 
 auth_results: list[AuthResult] = []
 
@@ -15,7 +18,13 @@ auth_results: list[AuthResult] = []
 @click.argument("results", type=click.File(mode="r"), required=True)
 @click.option("--show_invalid_creds", is_flag=True, default=False, show_default=True)
 @click.option("--show_invalid_users", is_flag=True, default=False, show_default=True)
-def command(results: click.File, show_invalid_creds: bool, show_invalid_users: bool):
+@click.option("--show_valid_aad_access", is_flag=True, default=False, show_default=True)
+def command(
+    results: click.File,
+    show_invalid_creds: bool,
+    show_invalid_users: bool,
+    show_valid_aad_access: bool,
+):
     console.print_info("Reviewing Spray365 results from '%s'" % results.name)
 
     raw_auth_results = ""
@@ -36,6 +45,7 @@ def command(results: click.File, show_invalid_creds: bool, show_invalid_users: b
     invalid_users: list[str] = []
 
     valid_creds: list[tuple[str, str]] = []
+    valid_creds_aad_details: dict[str, list[str]] = dict()
     partial_valid_auth_results: list[tuple[str, str, str]] = []
     invalid_auth_results: list[tuple[str, str, str]] = []
 
@@ -46,6 +56,19 @@ def command(results: click.File, show_invalid_creds: bool, show_invalid_users: b
                 valid_creds,
                 (auth_result.credential.email_address, auth_result.credential.password),
             )
+            if auth_result.credential.endpoint[0] not in valid_creds_aad_details:
+                valid_creds_aad_details[auth_result.credential.endpoint[0]] = [
+                    auth_result.credential.client_id[0]
+                ]
+            else:
+                if (
+                    auth_result.credential.client_id[0]
+                    not in valid_creds_aad_details[auth_result.credential.endpoint[0]]
+                ):
+                    valid_creds_aad_details[auth_result.credential.endpoint[0]].append(
+                        auth_result.credential.client_id[0]
+                    )
+
         elif auth_result.auth_partial_success:
             append_if_not_present(valid_users, auth_result.credential.email_address)
             append_if_not_present(
@@ -76,7 +99,7 @@ def command(results: click.File, show_invalid_creds: bool, show_invalid_users: b
 
     console.print_info("%d valid user accounts:" % len(valid_users))
     for email_address in valid_users:
-        console.print_info("\t%s" % email_address)
+        console.print_info("\t%s" % (email_address))
 
     console.print_info("%d invalid (non-existent) user accounts:" % len(invalid_users))
     if show_invalid_users:
@@ -88,6 +111,16 @@ def command(results: click.File, show_invalid_creds: bool, show_invalid_users: b
     console.print_info("%d valid credentials:" % len(valid_creds))
     for (email_address, password) in valid_creds:
         console.print_info("\t%s / %s" % (email_address, password))
+
+    if show_valid_aad_access:
+        console.print_info(
+            "%d AAD endpoints are accessible (endpoint / client):"
+            % (len(valid_creds_aad_details))
+        )
+        for (endpoint, client_ids) in valid_creds_aad_details.items():
+            console.print_info("\t%s" % (endpoint))
+            for client_id in client_ids:
+                console.print_info("\t\t%s" % (client_id))
 
     console.print_info(
         "%d partial-valid credentials (likely due to MFA / Conditional Access Policy):"

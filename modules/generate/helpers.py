@@ -1,13 +1,16 @@
 from __future__ import annotations
+
 import itertools
-from pathlib import Path
 import random
-from typing import Callable
 import typing
+from pathlib import Path
+from typing import Callable
+
 import click
+
 from modules.core.credential import Credential
-from modules.generate.configuration import Configuration
 from modules.core.output import console
+from modules.generate.configuration import Configuration
 
 
 def check_if_execution_plan_exists(conf: Configuration):

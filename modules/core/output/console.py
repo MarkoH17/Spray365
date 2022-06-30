@@ -2,6 +2,7 @@ import datetime
 import random
 import sys
 import typing
+
 import click
 from colorama import Fore
 
@@ -52,6 +53,7 @@ def print_warning(message: str):
 
 
 def print_error(message: str, fatal: bool = True):
+    print("\r", end="")
     _print_log("ERROR", message, "red")
     if fatal:
         sys.exit(1)

@@ -1,13 +1,16 @@
 from __future__ import annotations
+
 import datetime
 import json
-from modules.core.auth_error import AuthError
-from modules.core.credential import Credential
-from modules.core.auth_result import AuthResult
-from modules.core.output import console
-from modules.core import constants
-from msal import PublicClientApplication
 import warnings
+
+from msal import PublicClientApplication
+
+from modules.core import constants
+from modules.core.auth_error import AuthError
+from modules.core.auth_result import AuthResult
+from modules.core.credential import Credential
+from modules.core.output import console
 
 warnings.filterwarnings("ignore")
 

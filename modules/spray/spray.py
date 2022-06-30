@@ -1,15 +1,18 @@
 from __future__ import annotations
+
 import datetime
 import json
 import time
+
 import click
 from click_option_group import AllOptionGroup, optgroup
 from colorama import Fore
+
 from modules.core.auth_result import AuthResult
-from modules.spray import helpers
-from modules.generate import helpers as generate_helpers
-from modules.core.output import console
 from modules.core.credential import Credential
+from modules.core.output import console
+from modules.generate import helpers as generate_helpers
+from modules.spray import helpers
 from modules.spray.helpers import decode_execution_plan_item
 from modules.spray.spray_exception_wrapper import SprayExceptionWrapper
 

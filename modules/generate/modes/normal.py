@@ -1,19 +1,16 @@
 import json
 from typing import Callable
+
 import click
-from click_option_group import (
-    AllOptionGroup,
-    MutuallyExclusiveOptionGroup,
-    RequiredMutuallyExclusiveOptionGroup,
-    optgroup,
-)
-from modules.generate.configuration import Configuration
-from modules.core.options.utilities import add_options
-from modules.generate import helpers
-from modules.generate import options
-from modules.core.output import console
+from click_option_group import (AllOptionGroup, MutuallyExclusiveOptionGroup,
+                                RequiredMutuallyExclusiveOptionGroup, optgroup)
+
 from modules.core import constants
 from modules.core.credential import Credential
+from modules.core.options.utilities import add_options
+from modules.core.output import console
+from modules.generate import helpers, options
+from modules.generate.configuration import Configuration
 
 
 @click.command("normal", help="Generate a vanilla (normal) execution plan")

@@ -1,9 +1,11 @@
-import click
 import sys
+
+import click
+
 from modules.core.output import console
 from modules.generate import generate
-from modules.spray import spray
 from modules.review import review
+from modules.spray import spray
 
 version = "0.2.1-beta"
 
@@ -12,11 +14,12 @@ version = "0.2.1-beta"
 def cli():
     pass
 
+
 def version_check():
     if sys.version_info.major != 3:
         print("Spray365 requires Python 3")
         sys.exit(1)
-    
+
     if sys.version_info.minor < 9:
         console.print_warning("Spray365 may not work on Python versions prior to 3.9")
 

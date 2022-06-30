@@ -1,5 +1,8 @@
 import sys
+import traceback
+
 import click
+
 from modules.core.output import console
 from modules.spray import helpers, spray
 
@@ -15,12 +18,10 @@ class SprayExceptionWrapper(click.Command):
                 console.print_info("Received keyboard interrupt")
             else:
                 if sys.exc_info()[0]:
-                    console.print_info(
-                        "An exception was raised: %s" % sys.exc_info()[0].__name__
-                    )
+                    print("An exception was raised: %s" % sys.exc_info()[0].__name__)
                 else:
-                    console.print_info(
-                        "An unknown exception was raised: %s" % sys.exc_info()
-                    )
+                    print("An unknown exception was raised: %s" % sys.exc_info())
+                print("Stack trace from most recent exception:")
+                traceback.print_exc()
             helpers.export_auth_results(spray.auth_results)
             sys.exit(1)

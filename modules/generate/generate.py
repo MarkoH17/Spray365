@@ -1,4 +1,5 @@
 import click
+
 from modules.generate.modes import audit, normal
 
 
